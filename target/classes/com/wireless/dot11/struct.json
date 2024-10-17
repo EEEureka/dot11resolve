@@ -1,0 +1,15 @@
+{
+  "SSID": "...",
+  "BSSID": "FF:FF:FF:FF:FF:FF",
+  "protocol": "{AX/AC/N/BE/...}",
+  "BW": "{20/40/80/160}",
+  "Band": "{2.4/5}",
+  "Channel": "{1-14/36-165}",
+  "TaggedParameters": [
+    {
+      "TagNumber": 108,
+      "TagLength": 24,
+      "ByteStream": ""
+    }
+  ]
+}
