@@ -4,12 +4,12 @@ public class Tag {
     public int tagNumber;
     public int tagLength;
     public TagType tagType;
-    public byte[] tagValue;
+    public byte[] content;
 
     public Tag(int tagNumber, int tagLength, TagType tagType, byte[] tagValue) {
         this.tagNumber = tagNumber;
         this.tagLength = tagLength;
         this.tagType = tagType;
-        this.tagValue = tagValue;
+        this.content = tagValue;
     }
 }

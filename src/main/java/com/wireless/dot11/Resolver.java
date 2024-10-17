@@ -159,21 +159,31 @@ public class Resolver implements Serializable {
 
     /*
      * 获取VHT带宽, 用于802.11ac
+     * 根据已知文档，channel width字段等于2或3的情况已经废弃，只有为0时代表20/40, 为1代表80/160/80+80
+     * 目前判断频宽的方法是
+     * channel width为0， 频宽为20/40,
+     * channel width为1, CCFS1为0， 频宽为80
+     * channel width为1, CCFS1 > 0, |CCFS1-CCFS0| = 8, 频宽为160， |CCFS1-CCFS0| > 8,
+     * 频宽为80+80
      */
     public Bandwidth getVHTBandwidth(byte[] vhtContent) {
-
-        switch ((int) vhtContent[0] & 0x03) {
-            case 0x00:
-                return Bandwidth.BW20OR40;
-            case 0x01:
+        int bandwidth = (vhtContent[0] & 0x03);
+        if (bandwidth == 0) {
+            return Bandwidth.BW20OR40;
+        } else {
+            int CCFS0 = (vhtContent[1] & 0xff);
+            int CCFS1 = (vhtContent[2] & 0xff);
+            if (CCFS1 == 0) {
                 return Bandwidth.BW80;
-            case 0x02:
+            }
+            if (Math.abs(CCFS1 - CCFS0) == 8) {
                 return Bandwidth.BW160;
-            case 0x03:
+            }
+            if (Math.abs(CCFS1 - CCFS0) > 8) {
                 return Bandwidth.BW80_80;
-            default:
-                return null;
+            }
         }
+        return null;
     }
 
     /*
@@ -222,14 +232,16 @@ public class Resolver implements Serializable {
             }
         }
         int stationCount = 0;
+        int channelUsage = -1;
         if (haveQBSSTag) {
             stationCount = -1;
         }
         if (QBSSLoadElement != null) {
             byte[] stationCountBytes = new byte[2];
-            stationCountBytes[0] = QBSSLoadElement.tagValue[0];
-            stationCountBytes[1] = QBSSLoadElement.tagValue[1];
+            stationCountBytes[0] = QBSSLoadElement.content[0];
+            stationCountBytes[1] = QBSSLoadElement.content[1];
             stationCount = bytesToInt(ntohl(stationCountBytes));
+            channelUsage = QBSSLoadElement.content[2] & 0xff;
             // System.out.println("station count: " + stationCount);
         }
 
@@ -251,7 +263,7 @@ public class Resolver implements Serializable {
                 case 106:
                 case 107:
                 case 108:
-                    haveEht = true;
+                    haveEht = targetTag.tagType == TagType.EXT_TAG;
                     break;
                 case 36:
                 case 35:
@@ -259,11 +271,11 @@ public class Resolver implements Serializable {
                     break;
                 case 192:
                 case 191:
-                    haveVht = true;
+                    haveVht = targetTag.tagType == TagType.TAG;
                     break;
                 case 61:
                 case 45:
-                    haveHt = true;
+                    haveHt = targetTag.tagType == TagType.TAG;
                     break;
                 default:
                     break;
@@ -280,26 +292,30 @@ public class Resolver implements Serializable {
                     }
                     break;
                 case 192:
-                    vhtOpTag = targetTag;
+                    if (targetTag.tagType == TagType.TAG) {
+                        vhtOpTag = targetTag;
+                    }
                     break;
                 case 61:
-                    htInfoTag = targetTag;
+                    if (targetTag.tagType == TagType.TAG) {
+                        htInfoTag = targetTag;
+                    }
                     break;
                 default:
                     break;
             }
             if (targetTag.tagNumber == 0) {
-                byte[] ssid = targetTag.tagValue;
+                byte[] ssid = targetTag.content;
                 SSID = new String(ssid, StandardCharsets.UTF_8);
             }
         }
-        int channel = htInfoTag != null ? getHTChannel(htInfoTag.tagValue) : 0;
+        int channel = htInfoTag != null ? getHTChannel(htInfoTag.content) : 0;
         if (vhtOpTag != null) {
-            bandwidth = getVHTBandwidth(vhtOpTag.tagValue);
+            bandwidth = getVHTBandwidth(vhtOpTag.content);
         }
         if (bandwidth == null || bandwidth == Bandwidth.BW20OR40) {
             if (htInfoTag != null) {
-                bandwidth = getHTBandwidth(htInfoTag.tagValue);
+                bandwidth = getHTBandwidth(htInfoTag.content);
             }
         }
         // 检查对各类标准的支持
@@ -307,7 +323,7 @@ public class Resolver implements Serializable {
                 : haveHe ? Protocol.DOT11AX : haveVht ? Protocol.DOT11AC : haveHt ? Protocol.DOT11N : Protocol.DOT11G;
 
         return new Dot11Beacon(channel, BSSID, SSID, bandwidth, channel <= 14 ? Band.BAND2G : Band.BAND5G, vhtOpTag,
-                htInfoTag, ehtOpTag, heOpTag, tags, frameProtocol, packetNum, stationCount);
+                htInfoTag, ehtOpTag, heOpTag, tags, frameProtocol, packetNum, stationCount, channelUsage);
     }
 
     /*
@@ -490,7 +506,7 @@ public class Resolver implements Serializable {
     public static void mainMethod() {
         long startTime = System.currentTimeMillis();
         // String path = "F:/pcaps/5G_RAP73HD_1000M.pcap";
-        String path = "C:/Users/eureka/Downloads/tcpdump-2024-10-17 (4).pcap";
+        String path = "C:/Users/eureka/Downloads/tcpdump-2024-10-17 (7).pcap";
         Resolver resolver = new Resolver(path);
         resolver.resolve();
 
@@ -499,25 +515,26 @@ public class Resolver implements Serializable {
 
         // countProtocol(resolver.beaconSourceData);
 
-        long endTime = System.currentTimeMillis();
-        String bssid = "32:0d:9e:16:fc:cb";
+        String bssid = "30:82:3d:8c:1d:73";
         // String ssid = "@@@INTL-dev";
-        String ssid = "test";
-        // for (Dot11Beacon beacon : resolver.beaconSourceData) {
-        for (Dot11Beacon beacon : resolver.uniqueBSSIDs) {
+        // String ssid = "test";
+        for (Dot11Beacon beacon : resolver.beaconSourceData) {
+            // for (Dot11Beacon beacon : resolver.uniqueBSSIDs) {
             if (bytes2bssid(beacon.BSSID).contains(bssid)) {
                 // if (beacon.SSID.contains(ssid)) {
                 // if (beacon.SSID.equals(ssid)) {
                 System.out.println();
                 System.out.println("BSSID: " + bytes2bssid(beacon.BSSID));
-                System.out.println("SSID:" + beacon.SSID);
+                System.out.println("SSID: " + beacon.SSID);
                 System.out.println("station count: " + beacon.stationCount);
+                System.out.println("channel usage: " + beacon.channelUsage * 100 / 255 + "%");
                 System.out.println("channel: " + beacon.channel);
                 System.out.println("bandwidth: " + beacon.BW);
                 System.out.println("protocol: " + beacon.protocol);
                 System.out.println();
             }
         }
+        long endTime = System.currentTimeMillis();
         System.out.println("time consumption: " + (endTime - startTime) + "ms");
     }
 
