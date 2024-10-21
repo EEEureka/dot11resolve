@@ -10,6 +10,8 @@ import java.util.List;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Clipboard;
 
 import java.io.Serializable;
 import java.io.FileOutputStream;
@@ -233,7 +235,7 @@ public class Resolver implements Serializable {
         }
         int stationCount = 0;
         int channelUsage = -1;
-        if (haveQBSSTag) {
+        if (!haveQBSSTag) {
             stationCount = -1;
         }
         if (QBSSLoadElement != null) {
@@ -506,7 +508,7 @@ public class Resolver implements Serializable {
     public static void mainMethod() {
         long startTime = System.currentTimeMillis();
         // String path = "F:/pcaps/5G_RAP73HD_1000M.pcap";
-        String path = "C:/Users/eureka/Downloads/tcpdump-2024-10-17 (7).pcap";
+        String path = "C:/Users/eureka/Downloads/tcpdump-2024-10-18 (2).pcap";
         Resolver resolver = new Resolver(path);
         resolver.resolve();
 
@@ -515,14 +517,18 @@ public class Resolver implements Serializable {
 
         // countProtocol(resolver.beaconSourceData);
 
-        String bssid = "30:82:3d:8c:1d:73";
+        String bssid = "b4:5d:50:e0:18:f1";
         // String ssid = "@@@INTL-dev";
         // String ssid = "test";
+        String interval = " 	 ";
+        List<Dot11Beacon> result = new ArrayList<Dot11Beacon>();
         for (Dot11Beacon beacon : resolver.beaconSourceData) {
             // for (Dot11Beacon beacon : resolver.uniqueBSSIDs) {
             if (bytes2bssid(beacon.BSSID).contains(bssid)) {
+                // if (beacon.protocol == Protocol.DOT11B) {
                 // if (beacon.SSID.contains(ssid)) {
                 // if (beacon.SSID.equals(ssid)) {
+                result.add(beacon);
                 System.out.println();
                 System.out.println("BSSID: " + bytes2bssid(beacon.BSSID));
                 System.out.println("SSID: " + beacon.SSID);
@@ -536,6 +542,19 @@ public class Resolver implements Serializable {
         }
         long endTime = System.currentTimeMillis();
         System.out.println("time consumption: " + (endTime - startTime) + "ms");
+        if (result.size() == 0) {
+            System.out.println("No such BSSID");
+            return;
+        }
+        Dot11Beacon lastBeacon = result.get(result.size() - 1);
+        StringSelection selection = new StringSelection(
+                bytes2bssid(lastBeacon.BSSID) + interval + interval + lastBeacon.stationCount + interval + interval
+                        + interval + lastBeacon.BW
+                        + interval + interval
+                        + interval + lastBeacon.channelUsage * 100 / 255 + "%" + interval + interval + interval
+                        + lastBeacon.protocol);
+        Clipboard clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
+        clipboard.setContents(selection, null);
     }
 
     public static void main(String[] args) {
