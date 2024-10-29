@@ -17,9 +17,12 @@ public class Dot11Beacon {
     public int frameSerial;
     public int stationCount;
     public int channelUsage; // 信道利用率，保存的值为0-255， 利用率 = channelUsage / 255
+    public WPAInfo wpaInfo = null;
+    public RSN rsnInfo = null;
 
     public Dot11Beacon(int channel, byte[] BSSID, String SSID, Bandwidth BW, Band band, Tag vhtTag, Tag htTag,
-            Tag ehtTag, Tag heTag, List<Tag> tags, Protocol protocol, int frameCount, int staCount, int channelUsage) {
+            Tag ehtTag, Tag heTag, List<Tag> tags, Protocol protocol, int frameCount, int staCount, int channelUsage,
+            WPAInfo wpaInfo, RSN rsnInfo) {
         this.channel = channel;
         this.BSSID = BSSID;
         this.SSID = SSID;
@@ -34,6 +37,8 @@ public class Dot11Beacon {
         this.frameSerial = frameCount;
         this.stationCount = staCount;
         this.channelUsage = channelUsage;
+        this.wpaInfo = wpaInfo;
+        this.rsnInfo = rsnInfo;
     }
 
     private void printBSSID() {

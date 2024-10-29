@@ -142,8 +142,6 @@ public class Resolver implements Serializable {
                 tagLength = (packet[pointer] & 0xff);
                 pointer++;
                 byte[] content = new byte[tagLength];
-                // System.out.println("current pointer: " + Integer.toHexString(pointer));
-                // System.out.println("current tagLength: " + Integer.toHexString(tagLength));
                 try { // 可能存在有些beacon帧没有tag
                     for (int i = pointer; i < pointer + tagLength; i++) {
                         // System.out.println("i: " + i);
@@ -209,20 +207,7 @@ public class Resolver implements Serializable {
         return bytesToInt(new byte[] { primaryChannel });
     }
 
-    /*
-     * 将packet转换为Dot11Frame对象
-     */
-    public Dot11Beacon packet2Obj(Packet packet, int packetNum) {
-        byte[] packetData = packet.getRawData();
-        int beaconHeader = getTagParaPosition(packetData) - 36;
-        int sourceAdd = beaconHeader + 16;
-        byte[] BSSID = new byte[6];
-        for (int i = 0; i < 6; i++) {
-            BSSID[i] = packetData[sourceAdd + i];
-        }
-
-        List<Tag> tags = getTags(packetData);
-
+    public int[] QBSSAnalyse(Tag[] tags) {
         Tag QBSSLoadElement = null;
         boolean haveQBSSTag = false;
 
@@ -246,42 +231,48 @@ public class Resolver implements Serializable {
             channelUsage = QBSSLoadElement.content[2] & 0xff;
             // System.out.println("station count: " + stationCount);
         }
+        return new int[] { stationCount, channelUsage };
+    }
 
-        Tag htInfoTag = null;
-        Tag vhtOpTag = null;
-        Tag ehtOpTag = null;
-        Tag heOpTag = null;
-        Protocol frameProtocol = null;
-        Bandwidth bandwidth = null;
-        String SSID = "";
+    public Protocol getProtocolFromTag(List<Tag> tags) {
         boolean haveEht = false;
         boolean haveHe = false;
         boolean haveVht = false;
         boolean haveHt = false;
-
-        for (int i = 0; i < tags.size(); i++) {
-            Tag targetTag = tags.get(i);
-            switch (targetTag.tagNumber) {
+        for (Tag tag : tags) {
+            switch (tag.tagNumber) {
                 case 106:
                 case 107:
                 case 108:
-                    haveEht = targetTag.tagType == TagType.EXT_TAG;
+                    haveEht = tag.tagType == TagType.EXT_TAG;
                     break;
                 case 36:
                 case 35:
-                    haveHe = targetTag.tagType == TagType.EXT_TAG;
+                    haveHe = tag.tagType == TagType.EXT_TAG;
                     break;
                 case 192:
                 case 191:
-                    haveVht = targetTag.tagType == TagType.TAG;
+                    haveVht = tag.tagType == TagType.TAG;
                     break;
                 case 61:
                 case 45:
-                    haveHt = targetTag.tagType == TagType.TAG;
+                    haveHt = tag.tagType == TagType.TAG;
                     break;
                 default:
                     break;
             }
+        }
+        return haveEht ? Protocol.DOT11BE
+                : haveHe ? Protocol.DOT11AX : haveVht ? Protocol.DOT11AC : haveHt ? Protocol.DOT11N : Protocol.DOT11G;
+    }
+
+    public Tag[] getProtocolOpTags(List<Tag> tags) {
+        Tag htInfoTag = null;
+        Tag vhtOpTag = null;
+        Tag ehtOpTag = null;
+        Tag heOpTag = null;
+        for (int i = 0; i < tags.size(); i++) {
+            Tag targetTag = tags.get(i);
             switch (targetTag.tagNumber) {
                 case 108:
                     if (targetTag.tagType == TagType.EXT_TAG) {
@@ -306,12 +297,23 @@ public class Resolver implements Serializable {
                 default:
                     break;
             }
+        }
+        return new Tag[] { htInfoTag, vhtOpTag, ehtOpTag, heOpTag };
+    }
+
+    public String getSSID(List<Tag> tags) {
+        for (int i = 0; i < tags.size(); i++) {
+            Tag targetTag = tags.get(i);
             if (targetTag.tagNumber == 0) {
                 byte[] ssid = targetTag.content;
-                SSID = new String(ssid, StandardCharsets.UTF_8);
+                return new String(ssid, StandardCharsets.UTF_8);
             }
         }
-        int channel = htInfoTag != null ? getHTChannel(htInfoTag.content) : 0;
+        return "HIDDEN SSID";
+    }
+
+    public Bandwidth getBandwidthFromTag(List<Tag> tags, Tag vhtOpTag, Tag htInfoTag) {
+        Bandwidth bandwidth = null;
         if (vhtOpTag != null) {
             bandwidth = getVHTBandwidth(vhtOpTag.content);
         }
@@ -320,12 +322,199 @@ public class Resolver implements Serializable {
                 bandwidth = getHTBandwidth(htInfoTag.content);
             }
         }
+        return bandwidth;
+    }
+
+    public RSN getRSNInfo(List<Tag> tags) {
+        Tag targetTag = null;
+        int position = 0;
+        for (Tag tag : tags) {
+            if (tag.tagNumber == 48 && tag.tagType == TagType.TAG) {
+                targetTag = tag;
+                break;
+            }
+        }
+        if (targetTag == null) {
+            return null;
+        }
+        byte[] rsnContent = targetTag.content;
+        int RSNVersion = bytesToInt(ntohl(new byte[] { rsnContent[position + 0], rsnContent[position + 1] }));
+        position += 2;
+        byte[] groupCipherSuite = new byte[4];
+        for (int i = 0; i < 4; i++) {
+            groupCipherSuite[i] = rsnContent[position + i];
+        }
+        position += 4;
+        int pairwiseCipherSuiteCount = bytesToInt(ntohl(new byte[] { rsnContent[position], rsnContent[position + 1] }));
+        position += 2;
+        // now position is 8
+        List<byte[]> pairwiseCipherSuite = new ArrayList<byte[]>();
+        for (int i = 0; i < pairwiseCipherSuiteCount; i++) {
+            byte[] pairwiseCipher = new byte[4];
+            for (int j = 0; j < 4; j++) {
+                pairwiseCipher[j] = rsnContent[position + j];
+            }
+            pairwiseCipherSuite.add(pairwiseCipher);
+            position += 4;
+        }
+        // now position is 8 + 4 * pairwiseCipherSuiteCount
+        int akmSuiteCount = bytesToInt(ntohl(new byte[] { rsnContent[position], rsnContent[position + 1] }));
+        position += 2;
+        List<Integer> akmSuiteType = new ArrayList<Integer>();
+        for (int i = 0; i < akmSuiteCount; i++) {
+            byte[] akmSuite = new byte[4];
+            for (int j = 0; j < 4; j++) {
+                akmSuite[j] = rsnContent[position + j];
+            }
+            akmSuiteType.add(akmSuite[3] & 0xff);
+            position += 4;
+        }
+        // now position is 8 + 4 * pairwiseCipherSuiteCount + 2 + 4 * akmSuiteCount
+        byte[] RSNCapability = new byte[2];
+        for (int i = 0; i < 2; i++) {
+            RSNCapability[i] = rsnContent[position + i];
+        }
+        AKM akm = null;
+        switch (akmSuiteType.get(0)) {
+            case 1:
+                akm = AKM.DOT1X;
+                break;
+            case 2:
+                akm = AKM.PSK;
+                break;
+            case 3:
+                akm = AKM.FTDOT1X;
+                break;
+            case 4:
+                akm = AKM.FTPSK;
+                break;
+            case 5:
+                akm = AKM.DOT1XSHA256;
+                break;
+            case 6:
+                akm = AKM.PSKSHA256;
+                break;
+            case 7:
+                akm = AKM.TDLS;
+                break;
+            case 8:
+                akm = AKM.WPA3SAE;
+                break;
+            case 9:
+                akm = AKM.FTWPA3SAE;
+                break;
+            case 18:
+                akm = AKM.OWE;
+                break;
+            default:
+                break;
+        }
+        return new RSN(RSNVersion, groupCipherSuite, pairwiseCipherSuite, akmSuiteType, RSNCapability, akm);
+    }
+
+    public WPAInfo getWPAInfo(List<Tag> tags) {
+        Tag targetTag = null;
+        int position = 0;
+        for (Tag tag : tags) {
+            if (tag.tagNumber == 221 &&
+                    tag.tagType == TagType.TAG &&
+                    tag.content[0] == 0x00 &&
+                    tag.content[1] == 0x50 &&
+                    tag.content[2] == 0xf2 &&
+                    tag.content[3] == 0x01) {
+                targetTag = tag;
+                break;
+            }
+        }
+        if (targetTag == null) {
+            return null;
+        }
+        position += 4;
+        int WPAVersion = bytesToInt(ntohl(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
+        position += 2;
+        byte[] unicasstCipherSuite = new byte[4];
+        for (int i = 0; i < 4; i++) {
+            unicasstCipherSuite[i] = targetTag.content[position + i];
+        }
+        position += 4;
+        int unicastCipherSuiteCount = bytesToInt(
+                ntohl(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
+        position += 2;
+        List<byte[]> unicastCipherSuite = new ArrayList<byte[]>();
+        for (int i = 0; i < unicastCipherSuiteCount; i++) {
+            byte[] unicastCipher = new byte[4];
+            for (int j = 0; j < 4; j++) {
+                unicastCipher[j] = targetTag.content[position + j];
+            }
+            unicastCipherSuite.add(unicastCipher);
+            position += 4;
+        }
+        int akmSuiteCount = bytesToInt(
+                ntohl(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
+        position += 2;
+        List<byte[]> akmSuiteType = new ArrayList<byte[]>();
+        for (int i = 0; i < akmSuiteCount; i++) {
+            byte[] akmSuite = new byte[4];
+            for (int j = 0; j < 4; j++) {
+                akmSuite[j] = targetTag.content[position + j];
+            }
+            akmSuiteType.add(akmSuite);
+            position += 4;
+        }
+        return new WPAInfo(WPAVersion, unicasstCipherSuite, unicastCipherSuite, akmSuiteType);
+    }
+
+    /*
+     * 将packet转换为Dot11Frame对象
+     */
+    public Dot11Beacon packet2Obj(Packet packet, int packetNum) {
+        byte[] packetData = packet.getRawData();
+        int beaconHeader = getTagParaPosition(packetData) - 36;
+        int sourceAdd = beaconHeader + 16;
+        byte[] BSSID = new byte[6];
+        for (int i = 0; i < 6; i++) {
+            BSSID[i] = packetData[sourceAdd + i];
+        }
+
+        List<Tag> tags = getTags(packetData);
+
+        // 解析QBSSLoadElement, 获取station count和channel usage
+        int[] tagResult = QBSSAnalyse(tags.toArray(new Tag[tags.size()]));
+        int stationCount = tagResult[0];
+        int channelUsage = tagResult[1];
+
+        // 解析各标准的参数
+        Tag htInfoTag = null;
+        Tag vhtOpTag = null;
+        Tag ehtOpTag = null;
+        Tag heOpTag = null;
+        Tag[] protocolOpTags = getProtocolOpTags(tags);
+        htInfoTag = protocolOpTags[0];
+        vhtOpTag = protocolOpTags[1];
+        ehtOpTag = protocolOpTags[2];
+        heOpTag = protocolOpTags[3];
+        Protocol frameProtocol = null;
+        Bandwidth bandwidth = getBandwidthFromTag(tags, vhtOpTag, htInfoTag);
+        // 获取SSID
+        String SSID = getSSID(tags);
+
+        // 获取信道
+        int channel = htInfoTag != null ? getHTChannel(htInfoTag.content) : 0;
+
         // 检查对各类标准的支持
-        frameProtocol = haveEht ? Protocol.DOT11BE
-                : haveHe ? Protocol.DOT11AX : haveVht ? Protocol.DOT11AC : haveHt ? Protocol.DOT11N : Protocol.DOT11G;
+        frameProtocol = this.getProtocolFromTag(tags);
+
+        // 获取WPA信息
+        WPAInfo wpaInfo = getWPAInfo(tags);
+
+        // 获取RSN信息
+        RSN rsnInfo = getRSNInfo(tags);
+
+        // 检查加密方式
 
         return new Dot11Beacon(channel, BSSID, SSID, bandwidth, channel <= 14 ? Band.BAND2G : Band.BAND5G, vhtOpTag,
-                htInfoTag, ehtOpTag, heOpTag, tags, frameProtocol, packetNum, stationCount, channelUsage);
+                htInfoTag, ehtOpTag, heOpTag, tags, frameProtocol, packetNum, stationCount, channelUsage, wpaInfo,
+                rsnInfo);
     }
 
     /*
@@ -508,7 +697,7 @@ public class Resolver implements Serializable {
     public static void mainMethod() {
         long startTime = System.currentTimeMillis();
         // String path = "F:/pcaps/5G_RAP73HD_1000M.pcap";
-        String path = "C:/Users/eureka/Downloads/tcpdump-2024-10-18 (2).pcap";
+        String path = "C:/Users/eureka/Downloads/tcpdump-2024-10-28 (1).pcap";
         Resolver resolver = new Resolver(path);
         resolver.resolve();
 
@@ -517,7 +706,7 @@ public class Resolver implements Serializable {
 
         // countProtocol(resolver.beaconSourceData);
 
-        String bssid = "b4:5d:50:e0:18:f1";
+        String bssid = "c0:a4:76:33:44:3f";
         // String ssid = "@@@INTL-dev";
         // String ssid = "test";
         String interval = " 	 ";
