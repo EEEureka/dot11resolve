@@ -54,13 +54,3 @@ public class Main {
 3. 提交你的修改 (`git commit -am 'Add new feature'`)
 4. 推送到分支 (`git push origin feature-branch`)
 5. 创建Pull Request
-
-## 许可证
-该项目采用MIT许可证。详情请参阅 [LICENSE](LICENSE) 文件。
-
-## 联系方式
-如果你有任何问题或建议，请通过以下方式联系我们：
-- 邮箱: support@example.com
-- GitHub: [yourusername](https://github.com/yourusername)
-
-感谢你对本项目的关注和支持！
