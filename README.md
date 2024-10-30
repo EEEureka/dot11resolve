@@ -17,7 +17,7 @@
 ### 安装步骤
 1. 克隆项目代码：
     ```bash
-    git clone https://github.com/yourusername/pcapresolver.git
+    git clone https://github.com/3iuy-prog/Dot11Scanner.git
     ```
 2. 进入项目目录：
     ```bash
@@ -35,11 +35,12 @@ import com.example.pcapresolver.PcapParser;
 
 public class Main {
     public static void main(String[] args) {
-        PcapParser parser = new PcapParser("path/to/your/file.pcap");
-        parser.parse();
-        parser.getPackets().forEach(packet -> {
-            System.out.println(packet);
-        });
+        Resolver resolver = new Resolver("/path/to/your/pcap/file.pcap");
+        resolver.resolve();
+        // then the result can be accessed by resolver.beaconSourceData
+        List<DOT11Beacon> sourceData = resolver.beaconSourceData;
+        // beacons might be duplicated, use resolver.bssidDeduplication() to deduplicate
+        sourceData = resolver.bssidDeduplication();
     }
 }
 ```
