@@ -11,22 +11,8 @@
 
 ## 安装与使用
 ### 环境要求
-- Java 8 或更高版本
+- Java 21
 - Maven 3.6 或更高版本
-
-### 安装步骤
-1. 克隆项目代码：
-    ```bash
-    git clone https://github.com/3iuy-prog/Dot11Scanner.git
-    ```
-2. 进入项目目录：
-    ```bash
-    cd pcapresolver
-    ```
-3. 使用Maven构建项目：
-    ```bash
-    mvn clean install
-    ```
 
 ### 使用示例
 以下是一个简单的使用示例，展示如何解析PCAP文件并提取数据包信息：
