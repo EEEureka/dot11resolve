@@ -325,6 +325,12 @@ public class Resolver implements Serializable {
         return bandwidth;
     }
 
+    /**
+     * Extracts RSN (Robust Security Network) information from a list of tags.
+     *
+     * @param tags the list of tags to search for RSN information
+     * @return an RSN object containing the parsed RSN information, or null if no RSN tag is found
+     */
     public RSN getRSNInfo(List<Tag> tags) {
         Tag targetTag = null;
         int position = 0;
@@ -412,6 +418,16 @@ public class Resolver implements Serializable {
         return new RSN(RSNVersion, groupCipherSuite, pairwiseCipherSuite, akmSuiteType, RSNCapability, akm);
     }
 
+    /**
+     * Extracts WPA information from a list of tags.
+     *
+     * This method searches through the provided list of tags to find a specific tag
+     * that matches the WPA identifier. Once found, it extracts various WPA-related
+     * information such as the WPA version, unicast cipher suite, and AKM suite type.
+     *
+     * @param tags the list of tags to search through
+     * @return a WPAInfo object containing the extracted WPA information, or null if the WPA tag is not found
+     */
     public WPAInfo getWPAInfo(List<Tag> tags) {
         Tag targetTag = null;
         int position = 0;
@@ -571,6 +587,14 @@ public class Resolver implements Serializable {
         return uniqueBSSIDs;
     }
 
+    /**
+     * This method performs SSID deduplication on a list of Dot11Beacon objects.
+     * It iterates through the list of beacons and adds each unique SSID to a map.
+     * If an SSID is already present in the map, it is skipped.
+     * Finally, it converts the map values to a list and returns the list of unique SSIDs.
+     *
+     * @return A list of Dot11Beacon objects with unique SSIDs.
+     */
     public List<Dot11Beacon> ssidDeduplication() {
         Map<String, Dot11Beacon> result = new HashMap<String, Dot11Beacon>();
         this.uniqueSSIDs = new ArrayList<Dot11Beacon>();
@@ -697,7 +721,7 @@ public class Resolver implements Serializable {
     public static void mainMethod() {
         long startTime = System.currentTimeMillis();
         // String path = "F:/pcaps/5G_RAP73HD_1000M.pcap";
-        String path = "C:/Users/eureka/Downloads/tcpdump-2024-10-28 (1).pcap";
+        String path = "...";
         Resolver resolver = new Resolver(path);
         resolver.resolve();
 
