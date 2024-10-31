@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Clipboard;
+import java.util.Arrays;
 
 import java.io.Serializable;
 import java.io.FileOutputStream;
@@ -79,10 +80,7 @@ public class Resolver implements Serializable {
         }
     }
 
-    /*
-     * 转换网络字节序到主机字节序
-     */
-    public byte[] ntohl(byte[] data) {
+    public byte[] little2BigEndianOrder(byte[] data) {
         int length = data.length;
         byte[] h = new byte[length];
         for (int i = 0; i < length; i++) {
@@ -105,7 +103,7 @@ public class Resolver implements Serializable {
 
     public int getTagParaPosition(byte[] packet) {
         int pointer = 0;
-        int radioTapLength = bytesToInt(ntohl(new byte[] { packet[2], packet[3] }));
+        int radioTapLength = bytesToInt(little2BigEndianOrder(new byte[] { packet[2], packet[3] }));
         // System.out.println("radioTapLength: " + radioTapLength);
         pointer = radioTapLength + 36;
         // System.out.println("pointer: " + pointer);
@@ -227,7 +225,7 @@ public class Resolver implements Serializable {
             byte[] stationCountBytes = new byte[2];
             stationCountBytes[0] = QBSSLoadElement.content[0];
             stationCountBytes[1] = QBSSLoadElement.content[1];
-            stationCount = bytesToInt(ntohl(stationCountBytes));
+            stationCount = bytesToInt(little2BigEndianOrder(stationCountBytes));
             channelUsage = QBSSLoadElement.content[2] & 0xff;
             // System.out.println("station count: " + stationCount);
         }
@@ -344,14 +342,14 @@ public class Resolver implements Serializable {
             return null;
         }
         byte[] rsnContent = targetTag.content;
-        int RSNVersion = bytesToInt(ntohl(new byte[] { rsnContent[position + 0], rsnContent[position + 1] }));
+        int RSNVersion = bytesToInt(little2BigEndianOrder(new byte[] { rsnContent[position + 0], rsnContent[position + 1] }));
         position += 2;
         byte[] groupCipherSuite = new byte[4];
         for (int i = 0; i < 4; i++) {
             groupCipherSuite[i] = rsnContent[position + i];
         }
         position += 4;
-        int pairwiseCipherSuiteCount = bytesToInt(ntohl(new byte[] { rsnContent[position], rsnContent[position + 1] }));
+        int pairwiseCipherSuiteCount = bytesToInt(little2BigEndianOrder(new byte[] { rsnContent[position], rsnContent[position + 1] }));
         position += 2;
         // now position is 8
         List<byte[]> pairwiseCipherSuite = new ArrayList<byte[]>();
@@ -364,7 +362,7 @@ public class Resolver implements Serializable {
             position += 4;
         }
         // now position is 8 + 4 * pairwiseCipherSuiteCount
-        int akmSuiteCount = bytesToInt(ntohl(new byte[] { rsnContent[position], rsnContent[position + 1] }));
+        int akmSuiteCount = bytesToInt(little2BigEndianOrder(new byte[] { rsnContent[position], rsnContent[position + 1] }));
         position += 2;
         List<Integer> akmSuiteType = new ArrayList<Integer>();
         for (int i = 0; i < akmSuiteCount; i++) {
@@ -434,10 +432,10 @@ public class Resolver implements Serializable {
         for (Tag tag : tags) {
             if (tag.tagNumber == 221 &&
                     tag.tagType == TagType.TAG &&
-                    tag.content[0] == 0x00 &&
-                    tag.content[1] == 0x50 &&
-                    tag.content[2] == 0xf2 &&
-                    tag.content[3] == 0x01) {
+                    tag.content[0] == (byte)0x00 &&
+                    tag.content[1] == (byte)0x50 &&
+                    tag.content[2] == (byte)0xf2 &&
+                    tag.content[3] == (byte)0x01) {
                 targetTag = tag;
                 break;
             }
@@ -446,7 +444,7 @@ public class Resolver implements Serializable {
             return null;
         }
         position += 4;
-        int WPAVersion = bytesToInt(ntohl(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
+        int WPAVersion = bytesToInt(little2BigEndianOrder(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
         position += 2;
         byte[] unicasstCipherSuite = new byte[4];
         for (int i = 0; i < 4; i++) {
@@ -454,7 +452,7 @@ public class Resolver implements Serializable {
         }
         position += 4;
         int unicastCipherSuiteCount = bytesToInt(
-                ntohl(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
+                little2BigEndianOrder(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
         position += 2;
         List<byte[]> unicastCipherSuite = new ArrayList<byte[]>();
         for (int i = 0; i < unicastCipherSuiteCount; i++) {
@@ -465,8 +463,7 @@ public class Resolver implements Serializable {
             unicastCipherSuite.add(unicastCipher);
             position += 4;
         }
-        int akmSuiteCount = bytesToInt(
-                ntohl(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
+        int akmSuiteCount = bytesToInt(little2BigEndianOrder(new byte[] { targetTag.content[position], targetTag.content[position + 1] }));
         position += 2;
         List<byte[]> akmSuiteType = new ArrayList<byte[]>();
         for (int i = 0; i < akmSuiteCount; i++) {
@@ -485,8 +482,31 @@ public class Resolver implements Serializable {
      */
     public Dot11Beacon packet2Obj(Packet packet, int packetNum) {
         byte[] packetData = packet.getRawData();
-        int beaconHeader = getTagParaPosition(packetData) - 36;
+        int tagPos = getTagParaPosition(packetData);
+        int beaconHeader = tagPos - 36;
         int sourceAdd = beaconHeader + 16;
+        int fixedPara = tagPos - 12;
+
+        byte[] byteTimestamp = new byte[8];
+        byte[] beaconInterval = new byte[2];
+        byte[] capbilitiesInfomation = new byte[2];
+        for (int i = 0; i < 8; i++) { // 需要转换为主机字节序
+            byteTimestamp[i] = packetData[fixedPara + i];
+        }
+        byteTimestamp = little2BigEndianOrder(byteTimestamp);
+
+        int timestamp = bytesToInt(byteTimestamp);
+
+        for (int i = 0; i < 2; i++) { // 需要转换为主机字节序
+            beaconInterval[i] = packetData[fixedPara + 8 + i];
+        }
+        beaconInterval = little2BigEndianOrder(beaconInterval);
+        int interval = bytesToInt(beaconInterval); // 单位TU， 1TU = 1024us = 1.024ms
+
+        for (int i = 0; i < 2; i++) {
+            capbilitiesInfomation[i] = packetData[fixedPara + 10 + i];
+        }
+
         byte[] BSSID = new byte[6];
         for (int i = 0; i < 6; i++) {
             BSSID[i] = packetData[sourceAdd + i];
@@ -530,7 +550,7 @@ public class Resolver implements Serializable {
 
         return new Dot11Beacon(channel, BSSID, SSID, bandwidth, channel <= 14 ? Band.BAND2G : Band.BAND5G, vhtOpTag,
                 htInfoTag, ehtOpTag, heOpTag, tags, frameProtocol, packetNum, stationCount, channelUsage, wpaInfo,
-                rsnInfo);
+                rsnInfo, timestamp, interval, capbilitiesInfomation);
     }
 
     /*
@@ -539,7 +559,7 @@ public class Resolver implements Serializable {
     public List<Dot11Beacon> calculateAdjacentChannelInterference(List<Dot11Beacon> dot11beacon, String bssid) {
         Dot11Beacon targetBeacon = null;
         for (Dot11Beacon beacon : dot11beacon) {
-            if (bytes2bssid(beacon.BSSID).equals(bssid)) {
+            if (bytes2bssidStr(beacon.BSSID).equals(bssid)) {
                 targetBeacon = beacon;
                 break;
             }
@@ -558,8 +578,8 @@ public class Resolver implements Serializable {
             int beaconLowerChannel = beacon.channel - beacon.BW.getBandwidth() != -1 ? beacon.BW.getBandwidth() / 10
                     : 0;
             if (beaconUpperChannel >= lowerChannel && beaconLowerChannel <= upperChannel
-                    && !adjacentBeacons.containsKey(bytes2bssid(beacon.BSSID))) {
-                adjacentBeacons.put(bytes2bssid(beacon.BSSID), beacon);
+                    && !adjacentBeacons.containsKey(bytes2bssidStr(beacon.BSSID))) {
+                adjacentBeacons.put(bytes2bssidStr(beacon.BSSID), beacon);
             }
         }
         List<Dot11Beacon> adjacentBeaconList = new ArrayList<Dot11Beacon>();
@@ -576,10 +596,8 @@ public class Resolver implements Serializable {
         Map<String, Dot11Beacon> result = new HashMap<String, Dot11Beacon>();
         this.uniqueBSSIDs = new ArrayList<Dot11Beacon>();
         for (Dot11Beacon beacon : this.beaconSourceData) {
-            String BSSID = bytes2bssid(beacon.BSSID);
-            if (!result.containsKey(BSSID)) {
-                result.put(BSSID, beacon);
-            }
+            String BSSID = bytes2bssidStr(beacon.BSSID);
+            result.put(BSSID, beacon);
         }
         for (String key : result.keySet()) {
             this.uniqueBSSIDs.add(result.get(key));
@@ -614,7 +632,7 @@ public class Resolver implements Serializable {
     /*
      * 将byte[]转换为bssid
      */
-    public static String bytes2bssid(byte[] inputBytes) {
+    public static String bytes2bssidStr(byte[] inputBytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : inputBytes) {
             if (Integer.toHexString(b & 0xFF).length() == 1) {
@@ -626,7 +644,7 @@ public class Resolver implements Serializable {
         if (sb.length() > 0) {
             sb.deleteCharAt(sb.length() - 1);
         }
-        return sb.toString();
+        return sb.toString().toUpperCase();
     }
 
     public static void countProtocol(List<Dot11Beacon> dot11beacon) {
@@ -637,7 +655,7 @@ public class Resolver implements Serializable {
         Map<String, Dot11Beacon> GMap = new HashMap<String, Dot11Beacon>();
         Map<String, Dot11Beacon> ElseMap = new HashMap<String, Dot11Beacon>();
         for (Dot11Beacon beacon : dot11beacon) {
-            String BSSID = bytes2bssid(beacon.BSSID);
+            String BSSID = bytes2bssidStr(beacon.BSSID);
             if (beacon.protocol == Protocol.DOT11BE && !BEMap.containsKey(BSSID)) {
                 BEMap.put(BSSID, beacon);
             }
@@ -688,7 +706,7 @@ public class Resolver implements Serializable {
         Map<String, Dot11Beacon> result = new HashMap<String, Dot11Beacon>();
         for (Dot11Beacon beacon : dot11beacon) {
             // System.out.println(beacon.SSID);
-            String BSSID = bytes2bssid(beacon.BSSID);
+            String BSSID = bytes2bssidStr(beacon.BSSID);
             if (beacon.SSID.equals(ssid) && !result.containsKey(BSSID)) {
                 result.put(BSSID, beacon);
             }
@@ -703,7 +721,7 @@ public class Resolver implements Serializable {
     public static List<Dot11Beacon> bssidFilter(List<Dot11Beacon> dot11beacon, byte[] bssid) {
         List<Dot11Beacon> result = new ArrayList<Dot11Beacon>();
         for (Dot11Beacon beacon : dot11beacon) {
-            if (bytes2bssid(beacon.BSSID).equals(bytes2bssid(bssid))) {
+            if (bytes2bssidStr(beacon.BSSID).equals(bytes2bssidStr(bssid))) {
                 result.add(beacon);
             }
         }
@@ -721,7 +739,7 @@ public class Resolver implements Serializable {
     public static void mainMethod() {
         long startTime = System.currentTimeMillis();
         // String path = "F:/pcaps/5G_RAP73HD_1000M.pcap";
-        String path = "...";
+        String path ="C:/Users/eureka/Downloads/tcpdump-2024-10-28 (1).pcap";
         Resolver resolver = new Resolver(path);
         resolver.resolve();
 
@@ -730,20 +748,20 @@ public class Resolver implements Serializable {
 
         // countProtocol(resolver.beaconSourceData);
 
-        String bssid = "c0:a4:76:33:44:3f";
-        // String ssid = "@@@INTL-dev";
+        // String bssid = "c0:a4:76:33:44:3f";
+        String ssid = "@@@INTL-dev";
         // String ssid = "test";
         String interval = " 	 ";
         List<Dot11Beacon> result = new ArrayList<Dot11Beacon>();
         for (Dot11Beacon beacon : resolver.beaconSourceData) {
             // for (Dot11Beacon beacon : resolver.uniqueBSSIDs) {
-            if (bytes2bssid(beacon.BSSID).contains(bssid)) {
-                // if (beacon.protocol == Protocol.DOT11B) {
-                // if (beacon.SSID.contains(ssid)) {
-                // if (beacon.SSID.equals(ssid)) {
+            // if (bytes2bssid(beacon.BSSID).contains(bssid)) {
+            if (beacon.protocol == Protocol.DOT11B) {
+            // if (beacon.SSID.contains(ssid)) {
+            // if (beacon.SSID.equals(ssid)) {
                 result.add(beacon);
                 System.out.println();
-                System.out.println("BSSID: " + bytes2bssid(beacon.BSSID));
+                System.out.println("BSSID: " + bytes2bssidStr(beacon.BSSID));
                 System.out.println("SSID: " + beacon.SSID);
                 System.out.println("station count: " + beacon.stationCount);
                 System.out.println("channel usage: " + beacon.channelUsage * 100 / 255 + "%");
@@ -761,7 +779,7 @@ public class Resolver implements Serializable {
         }
         Dot11Beacon lastBeacon = result.get(result.size() - 1);
         StringSelection selection = new StringSelection(
-                bytes2bssid(lastBeacon.BSSID) + interval + interval + lastBeacon.stationCount + interval + interval
+                bytes2bssidStr(lastBeacon.BSSID) + interval + interval + lastBeacon.stationCount + interval + interval
                         + interval + lastBeacon.BW
                         + interval + interval
                         + interval + lastBeacon.channelUsage * 100 / 255 + "%" + interval + interval + interval
