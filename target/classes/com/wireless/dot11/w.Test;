@@ -1,0 +1,53 @@
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+package com.wireless.dot11;
+
+
+public class ResolverTest {
+
+    @Test
+    public void testBytesToInt_singleByte() {
+        Resolver resolver = new Resolver(null);
+        byte[] input = {0x01};
+        int expected = 1;
+        int actual = resolver.bytesToInt(input);
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testBytesToInt_multipleBytes() {
+        Resolver resolver = new Resolver(null);
+        byte[] input = {0x01, 0x02};
+        int expected = 258; // 0x0102
+        int actual = resolver.bytesToInt(input);
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testBytesToInt_largeValue() {
+        Resolver resolver = new Resolver(null);
+        byte[] input = {0x01, 0x02, 0x03, 0x04};
+        int expected = 16909060; // 0x01020304
+        int actual = resolver.bytesToInt(input);
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testBytesToInt_emptyArray() {
+        Resolver resolver = new Resolver(null);
+        byte[] input = {};
+        int expected = 0;
+        int actual = resolver.bytesToInt(input);
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testBytesToInt_negativeBytes() {
+        Resolver resolver = new Resolver(null);
+        byte[] input = {(byte) 0xFF, (byte) 0xFE};
+        int expected = 65534; // 0xFFFE
+        int actual = resolver.bytesToInt(input);
+        assertEquals(expected, actual);
+    }
+}

@@ -2,9 +2,9 @@ package com.wireless.dot11;
 
 public enum AKM {
     DOT1X("802.1x"),
-    PSK("PSK"),
+    PSK("WPA2-PSK"),
     FTDOT1X("Fast Transition 802.1x"),
-    FTPSK("Fast Transition PSK"),
+    FTPSK("Fast Transition WPA2-PSK"),
     DOT1XSHA256("802.1x SHA256"),
     PSKSHA256("PSK SHA256"),
     TDLS("TDLS"),
